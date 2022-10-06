@@ -1,8 +1,6 @@
 from django.db import models
 from django.utils.translation import gettext_lazy
 
-# Create your models here.
-
 
 class Place(models.Model):
     name = models.CharField(max_length=50)
@@ -32,3 +30,9 @@ class Event(models.Model):
     pending_users = models.JSONField()
     start_date = models.DateField()
     price = models.IntegerField()
+
+
+class Review(models.Model):
+    route_id = models.IntegerField()
+    review_text = models.TextField()
+    review_rate = models.IntegerField()
