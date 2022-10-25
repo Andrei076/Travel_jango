@@ -3,7 +3,10 @@ from django.shortcuts import render, redirect
 from django.http import HttpResponse
 from django.contrib.auth.models import User
 from django.db import connection
+from bson import ObjectId
 from route import models
+from mongo_utils import MongoDBConnection
+import json
 
 
 def route_filter(request, route_type=None, country=None, location=None):
@@ -79,7 +82,12 @@ def route_detail(request, id):
         {'route_id': itm[0], 'country': itm[1],'location': itm[2],
          'description': itm[3],'duration': itm[4],'stopping': itm[5],
          'route_type': itm[6], 'start': itm[7],'end': itm[8]} for itm in result]
-    return HttpResponse(new_result)
+
+    with MongoDBConnection('admin', 'admin', '127.0.0.1') as db:
+        collec = db['stop_points']
+        stop_point = collec.find_one({'_id': ObjectId(new_result[0][
+                                                          'stopping'])})
+    return HttpResponse([new_result, stop_point])
 
 
 def route_review(request, route_id):
@@ -96,17 +104,26 @@ def add_route(request):
         if request.method == 'POST':
             starting = request.POST.get('starting')
             destination = request.POST.get('destination')
+            stopping = request.POST.get('stopping')
             country = request.POST.get('country')
             location = request.POST.get('location')
             description = request.POST.get('description')
             duration = request.POST.get('duration')
             route_type = request.POST.get('route_type')
+
+            stop_list = json.loads(stopping)
+
+            with MongoDBConnection('admin', 'admin', '127.0.0.1') as db:
+                collec = db['stop_points']
+                id_stop_points = collec.insert_one({'points': stop_list}).inserted_id
+
             start_obj = models.Place.objects.get(name=starting)
             dest_obj = models.Place.objects.get(name=destination)
             new_route = models.Route(location=location,starting=start_obj.id,
                          destination=dest_obj.id,country=country,
+                         stopping=id_stop_points,
                          description=description,duration=duration,
-                         route_type=route_type, stopping={})
+                         route_type=route_type)
             new_route.save()
             return HttpResponse('Creating a route')
     else:
@@ -142,7 +159,8 @@ def event_handler(request, event_id):
         route.location,
         route.stopping,
         route.duration,
-        route.route_type
+        route.route_type,
+        event.event_users
         FROM route_event as event
         JOIN route_place as start_point
         ON start_point.id = route.starting
@@ -158,8 +176,21 @@ def event_handler(request, event_id):
     new_result = [{'event_id': itm[0], 'start_date': itm[1], 'price': itm[2],
                    'start': itm[3], 'end': itm[4],  'country': itm[5],
                    'location': itm[6], 'stopping': itm[7], 'duration': itm[
-            8],    'route_type': itm[9]} for itm
+            8],    'route_type': itm[9], 'id_event_users': itm[10]} for itm
                   in result]
+
+    with MongoDBConnection('admin', 'admin', '127.0.0.1') as db:
+        collec = db['event_users']
+        id_users = collec.find_one({'_id': ObjectId(new_result[0][
+                                                       'id_event_users'])})
+    users_accepted = User.objects.filter(pk__in=id_users['accepted'])
+    users_pending = User.objects.filter(pk__in=id_users['pending'])
+
+    list_users_accepted = [{itm.id: itm.username} for itm in users_accepted]
+    list_users_pending = [{itm.id: itm.username} for itm in users_pending]
+
+    new_result[0]['users_accepted'] = list_users_accepted
+    new_result[0]['users_pending'] = list_users_pending
 
     return HttpResponse(new_result)
 
@@ -204,3 +235,56 @@ def user_registration(request):
 def logout_user(request):
     logout(request)
     return redirect('/login')
+
+
+def add_me_to_event(request, event_id):
+    user = request.user.id
+    event = models.Event.objects.filter(id=event_id).first()
+
+    with MongoDBConnection('admin', 'admin', '127.0.0.1') as db:
+        event_users = db["event_users"]
+        all_event_users = event_users.find_one(
+            {'_id': ObjectId(event.event_users)})
+        if user in all_event_users['pending'] or user in all_event_users[
+            'accepted']:
+            return HttpResponse('You are in pending users')
+        else:
+            all_event_users['pending'].append(user)
+            event_users.update_one({'_id': ObjectId(event.event_users)},
+                                   {"$set": all_event_users}, upsert=False)
+
+    return HttpResponse('ok. You are added')
+
+
+def event_accept_user(request, event_id):
+    if request.method == "GET":
+        if request.user.is_superuser:
+            event = models.Event.objects.filter(id=event_id).first()
+            with MongoDBConnection('admin', 'admin', '127.0.0.1') as db:
+                collec = db['event_users']
+                all_event_users = collec.find_one(
+                    {'_id': ObjectId(event.event_users)})
+            return render(request, "accepted_user.html", {"pending_users":
+                                                              all_event_users['pending']})
+
+        else:
+            return HttpResponse("You dont have access to this!")
+
+    if request.method == "POST":
+        if request.POST.get("selected_user_id") is not None:
+            event = models.Event.objects.filter(id=event_id).first()
+            select_user = int(request.POST.get("selected_user_id"))
+            with MongoDBConnection('admin', 'admin', '127.0.0.1') as db:
+                collec = db['event_users']
+                all_event_users = collec.find_one(
+                    {'_id': ObjectId(event.event_users)})
+
+                all_event_users["pending"].remove(select_user)
+                all_event_users["accepted"].append(select_user)
+
+                collec.update_one({'_id': ObjectId(event.event_users)},
+                                  {"$set": all_event_users}, upsert=False)
+
+            return HttpResponse("User is accepted")
+        else:
+            return HttpResponse("You do not choose user")
