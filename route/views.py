@@ -150,8 +150,7 @@ def add_event_route(request, route_id):
             price = request.POST.get('price')
 
             new_event = models.Event(route_id=route_id, start_date=start_date,
-                         price=price, approved_user=[], pending_users=[],
-                                     event_admin=1)
+                         price=price, event_admin=1)
             try:
                 new_event.full_clean()
                 new_event.save()
