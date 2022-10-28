@@ -4,6 +4,8 @@ from django.http import HttpResponse
 from django.contrib.auth.models import User
 from django.db import connection
 from bson import ObjectId
+from django.core.exceptions import ValidationError
+from django.core.paginator import Paginator
 from route import models
 from mongo_utils import MongoDBConnection
 import json
@@ -22,19 +24,18 @@ def route_filter(request, route_type=None, country=None, location=None):
     filter_string = 'and'.join(query_filter)
 
     joining = """SELECT
-    route_route.country,
-    route_route.description, 
-    route_route.duration, 
-    route_route.stopping, 
-    route_route.route_type,
-    start_point.name,
-    end_point.name
+        route_route.country,
+        route_route.duration, 
+        route_route.stopping, 
+        route_route.route_type,
+        start_point.name,
+        end_point.name
     FROM route_route 
     JOIN route_place as start_point  
         On start_point.id = route_route.starting 
     JOIN route_place as end_point  
         On end_point.id = route_route.destination
-WHERE """ + filter_string
+    WHERE """ + filter_string
 
     cursor.execute(joining)
 
@@ -42,18 +43,26 @@ WHERE """ + filter_string
     new_result = []
     for i in result:
         new_country = i[0]
-        new_description = i[1]
-        new_duration = i[2]
-        new_stopping = i[3]
-        new_route_type = i[4]
-        new_start = i[5]
-        new_end = i[6]
-        result_dict = {"country": new_country, "description": new_description,
+        new_duration = i[1]
+        new_stopping = i[2]
+        new_route_type = i[3]
+        new_start = i[4]
+        new_end = i[5]
+        result_dict = {"country": new_country,
                        "duration": new_duration,"stopping": new_stopping,
                        "route_type": new_route_type, "start": new_start,
                        "end": new_end}
         new_result.append(result_dict)
-    return HttpResponse(new_result)
+
+    p = Paginator(new_result, 2)
+    num_page = int(request.GET.get('page', default=1))
+
+    if p.num_pages < num_page:
+        num_page = 1
+
+    select_page = p.get_page(num_page)
+
+    return HttpResponse(select_page.object_list)
 
 
 def route_detail(request, id):
@@ -111,6 +120,7 @@ def add_route(request):
             duration = request.POST.get('duration')
             route_type = request.POST.get('route_type')
 
+            models.validate_stopping_point(stopping)
             stop_list = json.loads(stopping)
 
             with MongoDBConnection('admin', 'admin', '127.0.0.1') as db:
@@ -124,6 +134,7 @@ def add_route(request):
                          stopping=id_stop_points,
                          description=description,duration=duration,
                          route_type=route_type)
+            new_route.full_clean()
             new_route.save()
             return HttpResponse('Creating a route')
     else:
@@ -141,7 +152,11 @@ def add_event_route(request, route_id):
             new_event = models.Event(route_id=route_id, start_date=start_date,
                          price=price, approved_user=[], pending_users=[],
                                      event_admin=1)
-            new_event.save()
+            try:
+                new_event.full_clean()
+                new_event.save()
+            except ValidationError:
+                return HttpResponse('error Date')
             return HttpResponse('Info about event')
     else:
         return HttpResponse('Not allowed to add event')
