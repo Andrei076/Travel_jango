@@ -3,13 +3,12 @@ from django.shortcuts import render, redirect
 from django.http import HttpResponse
 from django.contrib.auth.models import User
 from django.db import connection
-from bson import ObjectId
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from route import models
 from mongo_utils import MongoDBConnection
 import json
-
+from bson import ObjectId
 
 def route_filter(request, route_type=None, country=None, location=None):
     cursor = connection.cursor()
@@ -149,6 +148,7 @@ def add_event_route(request, route_id):
             start_date = request.POST.get('start_date')
             price = request.POST.get('price')
 
+
             new_event = models.Event(route_id=route_id, start_date=start_date,
                          price=price, event_admin=1)
             try:
@@ -156,6 +156,7 @@ def add_event_route(request, route_id):
                 new_event.save()
             except ValidationError:
                 return HttpResponse('error Date')
+
             return HttpResponse('Info about event')
     else:
         return HttpResponse('Not allowed to add event')

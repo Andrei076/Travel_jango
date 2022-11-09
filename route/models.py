@@ -25,7 +25,8 @@ def validate_route_type(value):
 def validate_date(value):
     try:
         parsed_date = datetime.strptime(value, "%Y-%m-%d")
-    except:
+
+    except BaseException:
         raise ValidationError('error')
     if datetime.today() > parsed_date:
         raise ValidationError('error')
