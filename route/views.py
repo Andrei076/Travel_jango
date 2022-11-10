@@ -100,10 +100,12 @@ def route_detail(request, id):
 
 def route_review(request, route_id):
     result = models.Review.objects.all().filter(route_id=route_id)
-    return HttpResponse(
+    if result:
+        return HttpResponse(
         [{'route_id': itm.route_id, 'review_rate': itm.review_rate} for itm in
          result])
-
+    else:
+        return HttpResponse('Review not found')
 
 def add_route(request):
     if request.user.has_perm('route.add_route'):
