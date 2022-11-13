@@ -21,15 +21,14 @@ def validate_route_type(value):
     if value.title() not in ['Car', 'Bicycle']:
         raise ValidationError('error')
 
-
 def validate_date(value):
     try:
-        parsed_date = datetime.strptime(value, "%Y-%m-%d")
-
+        parsed_date = datetime.datetime.strptime(value, "%Y-%m-%d").date()
     except BaseException:
-        raise ValidationError('error')
-    if datetime.today() > parsed_date:
-        raise ValidationError('error')
+        raise ValidationError('Error date')
+
+    if datetime.date.today() > parsed_date:
+        raise ValidationError('This date is old')
 
 
 class Place(models.Model):

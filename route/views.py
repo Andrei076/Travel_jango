@@ -107,6 +107,7 @@ def route_review(request, route_id):
     else:
         return HttpResponse('Review not found')
 
+
 def add_route(request):
     if request.user.has_perm('route.add_route'):
         if request.method == 'GET':
@@ -149,10 +150,8 @@ def add_event_route(request, route_id):
         if request.method == 'POST':
             start_date = request.POST.get('start_date')
             price = request.POST.get('price')
-
-
             new_event = models.Event(route_id=route_id, start_date=start_date,
-                         price=price, event_admin=1)
+                         price=price, event_admin=1, event_users=[])
             try:
                 new_event.full_clean()
                 new_event.save()
@@ -161,7 +160,7 @@ def add_event_route(request, route_id):
 
             return HttpResponse('Info about event')
     else:
-        return HttpResponse('Not allowed to add event')
+        return HttpResponse('Not allowed to add event', status=401)
 
 
 def event_handler(request, event_id):
